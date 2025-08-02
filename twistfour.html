@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connect Four</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #f06, #4a90e2);
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .game-container {
+            background-color: rgba(0, 0, 0, 0.4);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            width: 90%;
+            max-width: 600px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            margin: 0;
+        }
+
+        #gameCanvas {
+            border: 5px solid #2c3e50;
+            background-color: #34495e;
+            border-radius: 10px;
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+            touch-action: none; /* Prevents default touch actions */
+            transform-origin: center;
+        }
+
+        #statusDisplay {
+            font-size: 1.5rem;
+            font-weight: 700;
+            padding: 10px 20px;
+            background-color: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+        }
+
+        .button {
+            padding: 12px 25px;
+            font-size: 1rem;
+            font-weight: 700;
+            color: #fff;
+            background: linear-gradient(135deg, #1abc9c, #2ecc71);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transition: transform 0.2s, box-shadow 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .rotate-button {
+            background: linear-gradient(135deg, #f39c12, #e67e22);
+        }
+
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .button:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 2rem;
+            }
+            .button {
+                padding: 10px 20px;
+                font-size: 0.9rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="game-container">
+        <h1>Connect Four</h1>
+        <canvas id="gameCanvas" width="560" height="480"></canvas>
+        <div id="statusDisplay">Red's Turn</div>
+        <div class="controls">
+            <button id="newGameBtn" class="button">New Game</button>
+            <button id="rotateBtn" class="button rotate-button">Rotate</button>
+        </div>
+    </div>
+
+    <script>
+        // Game constants and variables
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const statusDisplay = document.getElementById('statusDisplay');
+        const newGameBtn = document.getElementById('newGameBtn');
+        const rotateBtn = document.getElementById('rotateBtn');
+
+        let ROWS = 6;
+        let COLS = 7;
+        const CELL_SIZE = 80;
+        const DISC_RADIUS = 35;
+        const ANIMATION_SPEED = 15; // Animation frames per drop
+
+        let board = [];
+        let currentPlayer = 1; // 1 for Red, 2 for Yellow
+        let gameOver = false;
+        let isAnimating = false;
+        let isRotating = false;
+
+        // --- Game Logic Functions ---
+
+        /**
+         * Initializes the game board and draws it on the canvas.
+         */
+        function initGame() {
+            ROWS = 6;
+            COLS = 7;
+            board = Array(ROWS).fill(null).map(() => Array(COLS).fill(0));
+            currentPlayer = 1;
+            gameOver = false;
+            isAnimating = false;
+            isRotating = false;
+            drawBoard();
+            updateStatus();
+        }
+
+        /**
+         * Draws the game board grid and existing discs on the canvas.
+         */
+        function drawBoard() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw the background board
+            ctx.fillStyle = '#34495e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw the empty circles (holes)
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    const x = c * CELL_SIZE + CELL_SIZE / 2;
+                    const y = r * CELL_SIZE + CELL_SIZE / 2;
+                    
+                    ctx.beginPath();
+                    ctx.arc(x, y, DISC_RADIUS, 0, Math.PI * 2);
+                    ctx.fillStyle = '#1e2b38';
+                    ctx.fill();
+                    ctx.closePath();
+                }
+            }
+
+            // Draw the discs already on the board
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (board[r][c] !== 0) {
+                        drawDisc(r, c, board[r][c]);
+                    }
+                }
+            }
+        }
+
+        /**
+         * Draws a single disc at a specific row and column.
+         * @param {number} r - The row index.
+         * @param {number} c - The column index.
+         * @param {number} player - The player number (1 or 2).
+         */
+        function drawDisc(r, c, player) {
+            const x = c * CELL_SIZE + CELL_SIZE / 2;
+            const y = r * CELL_SIZE + CELL_SIZE / 2;
+
+            ctx.beginPath();
+            ctx.arc(x, y, DISC_RADIUS, 0, Math.PI * 2);
+            
+            // Add a gradient for a 3D effect
+            const gradient = ctx.createRadialGradient(x, y, DISC_RADIUS * 0.5, x, y, DISC_RADIUS);
+            gradient.addColorStop(0, player === 1 ? '#e74c3c' : '#f1c40f');
+            gradient.addColorStop(1, player === 1 ? '#c0392b' : '#f39c12');
+            
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        /**
+         * Animates a falling disc.
+         * @param {number} c - The column index.
+         * @param {number} targetRow - The final row index for the disc.
+         * @param {number} player - The player number.
+         */
+        function animateDrop(c, targetRow, player) {
+            isAnimating = true;
+            let currentY = -CELL_SIZE / 2; // Start above the canvas
+            const targetY = targetRow * CELL_SIZE + CELL_SIZE / 2;
+            
+            function animate() {
+                // Redraw the entire board to clear the previous disc position
+                drawBoard();
+
+                // Draw the falling disc at its current position
+                const x = c * CELL_SIZE + CELL_SIZE / 2;
+                ctx.beginPath();
+                ctx.arc(x, currentY, DISC_RADIUS, 0, Math.PI * 2);
+                
+                const gradient = ctx.createRadialGradient(x, currentY, DISC_RADIUS * 0.5, x, currentY, DISC_RADIUS);
+                gradient.addColorStop(0, player === 1 ? '#e74c3c' : '#f1c40f');
+                gradient.addColorStop(1, player === 1 ? '#c0392b' : '#f39c12');
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                ctx.closePath();
+
+                currentY += ANIMATION_SPEED;
+                
+                if (currentY >= targetY) {
+                    // Animation finished, place the disc and check for win
+                    board[targetRow][c] = player;
+                    isAnimating = false;
+                    drawBoard(); // Final draw to place the disc correctly
+                    checkAfterAction(targetRow, c);
+                } else {
+                    requestAnimationFrame(animate);
+                }
+            }
+            requestAnimationFrame(animate);
+        }
+
+        /**
+         * Checks for a win or draw and updates the game state.
+         * @param {number} [r] - The last placed disc's row.
+         * @param {number} [c] - The last placed disc's column.
+         */
+        function checkAfterAction(r, c) {
+            let win = false;
+            // If a disc was just dropped, check for a win around it
+            if (r !== undefined && c !== undefined) {
+                win = checkWin(r, c);
+            } else {
+                // If the board was rotated, check the whole board
+                for (let row = 0; row < ROWS; row++) {
+                    for (let col = 0; col < COLS; col++) {
+                        if (board[row][col] !== 0 && checkWin(row, col)) {
+                            win = true;
+                            break;
+                        }
+                    }
+                    if (win) break;
+                }
+            }
+            
+            if (win) {
+                gameOver = true;
+                updateStatus();
+            } else if (checkDraw()) {
+                gameOver = true;
+                updateStatus();
+            } else {
+                switchPlayer();
+                updateStatus();
+            }
+        }
+
+        /**
+         * Switches the current player.
+         */
+        function switchPlayer() {
+            currentPlayer = currentPlayer === 1 ? 2 : 1;
+        }
+
+        /**
+         * Updates the status message on the screen.
+         */
+        function updateStatus() {
+            if (gameOver) {
+                if (checkDraw()) {
+                    statusDisplay.textContent = 'Game is a Draw!';
+                } else {
+                    const winner = currentPlayer === 1 ? 'Red' : 'Yellow';
+                    statusDisplay.textContent = `${winner} Wins!`;
+                    statusDisplay.style.color = winner === 'Red' ? '#e74c3c' : '#f1c40f';
+                }
+            } else if (isRotating) {
+                statusDisplay.textContent = 'Board Rotating...';
+                statusDisplay.style.color = '#fff';
+            } else {
+                const playerColor = currentPlayer === 1 ? 'Red' : 'Yellow';
+                statusDisplay.textContent = `${playerColor}'s Turn`;
+                statusDisplay.style.color = playerColor === 'Red' ? '#e74c3c' : '#f1c40f';
+            }
+        }
+
+        /**
+         * Checks if the game is a draw.
+         * @returns {boolean} - True if the game is a draw, otherwise false.
+         */
+        function checkDraw() {
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    if (board[r][c] === 0) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        /**
+         * Checks for a winning condition from the last placed disc's position.
+         * @param {number} r - The row index of the last disc.
+         * @param {number} c - The column index of the last disc.
+         * @returns {boolean} - True if a win is found, otherwise false.
+         */
+        function checkWin(r, c) {
+            const player = board[r][c];
+            if (player === 0) return false;
+
+            // Define directions to check: horizontal, vertical, and two diagonals
+            const directions = [
+                [0, 1],   // Horizontal
+                [1, 0],   // Vertical
+                [1, 1],   // Diagonal (down-right)
+                [1, -1]   // Diagonal (down-left)
+            ];
+
+            for (const [dr, dc] of directions) {
+                let count = 1;
+                // Check forward direction
+                count += countInDirection(r, c, dr, dc, player);
+                // Check backward direction (opposite)
+                count += countInDirection(r, c, -dr, -dc, player);
+                
+                if (count >= 4) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /**
+         * Counts consecutive discs of the same player in a given direction.
+         * @param {number} r - The starting row.
+         * @param {number} c - The starting column.
+         * @param {number} dr - The row direction increment.
+         * @param {number} dc - The column direction increment.
+         * @param {number} player - The player to check for.
+         * @returns {number} - The number of consecutive discs found.
+         */
+        function countInDirection(r, c, dr, dc, player) {
+            let count = 0;
+            let currentR = r + dr;
+            let currentC = c + dc;
+            while (currentR >= 0 && currentR < ROWS && currentC >= 0 && currentC < COLS && board[currentR][currentC] === player) {
+                count++;
+                currentR += dr;
+                currentC += dc;
+            }
+            return count;
+        }
+        
+        /**
+         * Rotates the board 90 degrees clockwise and updates dimensions.
+         */
+        function rotateBoard() {
+            const oldRows = ROWS;
+            const oldCols = COLS;
+            const newBoard = Array(oldCols).fill(null).map(() => Array(oldRows).fill(0));
+            
+            for (let r = 0; r < oldRows; r++) {
+                for (let c = 0; c < oldCols; c++) {
+                    if (board[r][c] !== 0) {
+                        newBoard[c][oldRows - 1 - r] = board[r][c];
+                    }
+                }
+            }
+            
+            // Swap the dimensions
+            [ROWS, COLS] = [oldCols, oldRows];
+            [canvas.width, canvas.height] = [canvas.height, canvas.width];
+
+            board = newBoard;
+        }
+
+        /**
+         * Animates discs falling after a board rotation.
+         */
+        function dropHangingDiscs() {
+            isAnimating = true;
+            let moved = false;
+            
+            // Create a temporary board for the final state after gravity
+            let finalBoard = Array(ROWS).fill(null).map(() => Array(COLS).fill(0));
+            let fallingDiscs = [];
+            
+            // Calculate final positions for all discs
+            for (let c = 0; c < COLS; c++) {
+                let emptyRow = ROWS - 1;
+                for (let r = ROWS - 1; r >= 0; r--) {
+                    if (board[r][c] !== 0) {
+                        finalBoard[emptyRow][c] = board[r][c];
+                        if (r !== emptyRow) {
+                            moved = true;
+                            fallingDiscs.push({
+                                player: board[r][c],
+                                c: c,
+                                fromR: r,
+                                toR: emptyRow,
+                                currentY: r * CELL_SIZE + CELL_SIZE / 2
+                            });
+                        }
+                        emptyRow--;
+                    }
+                }
+            }
+            
+            // If no discs need to fall, just check for a win and end the turn
+            if (!moved) {
+                isAnimating = false;
+                isRotating = false;
+                checkAfterAction();
+                return;
+            }
+
+            // Animation loop
+            function animate() {
+                drawBoard(); // Clear canvas and redraw the pre-gravity board
+                
+                let allDiscsLanded = true;
+                
+                for (const disc of fallingDiscs) {
+                    const targetY = disc.toR * CELL_SIZE + CELL_SIZE / 2;
+                    if (disc.currentY < targetY) {
+                        disc.currentY += ANIMATION_SPEED;
+                        if (disc.currentY > targetY) {
+                            disc.currentY = targetY;
+                        }
+                        allDiscsLanded = false;
+                    }
+                    
+                    const x = disc.c * CELL_SIZE + CELL_SIZE / 2;
+                    const player = disc.player;
+                    ctx.beginPath();
+                    ctx.arc(x, disc.currentY, DISC_RADIUS, 0, Math.PI * 2);
+                    const gradient = ctx.createRadialGradient(x, disc.currentY, DISC_RADIUS * 0.5, x, disc.currentY, DISC_RADIUS);
+                    gradient.addColorStop(0, player === 1 ? '#e74c3c' : '#f1c40f');
+                    gradient.addColorStop(1, player === 1 ? '#c0392b' : '#f39c12');
+                    ctx.fillStyle = gradient;
+                    ctx.fill();
+                    ctx.closePath();
+                }
+
+                if (!allDiscsLanded) {
+                    requestAnimationFrame(animate);
+                } else {
+                    // Animation finished, update the board to the final state
+                    board = finalBoard;
+                    isAnimating = false;
+                    isRotating = false;
+                    drawBoard(); // Final draw to show the discs in their correct positions
+                    checkAfterAction();
+                }
+            }
+            requestAnimationFrame(animate);
+        }
+
+        // --- Event Listeners ---
+
+        /**
+         * Handles a player's move when a column is clicked.
+         * @param {Event} event - The click event.
+         */
+        function handleMove(event) {
+            if (gameOver || isAnimating || isRotating) {
+                return;
+            }
+
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const c = Math.floor(x / CELL_SIZE);
+
+            if (c >= 0 && c < COLS) {
+                // Find the lowest empty row in the clicked column
+                for (let r = ROWS - 1; r >= 0; r--) {
+                    if (board[r][c] === 0) {
+                        animateDrop(c, r, currentPlayer);
+                        return; // Exit after finding the spot and starting the animation
+                    }
+                }
+            }
+        }
+
+        /**
+         * Handles the "Rotate" button click.
+         */
+        function handleRotate() {
+            if (gameOver || isAnimating || isRotating) {
+                return;
+            }
+
+            isRotating = true;
+            updateStatus();
+            
+            // Perform the rotation
+            rotateBoard();
+
+            // Animate the falling discs after rotation
+            dropHangingDiscs();
+        }
+
+        // Add event listener for mouse clicks
+        canvas.addEventListener('click', handleMove);
+
+        // Add event listener for touch taps
+        canvas.addEventListener('touchend', (event) => {
+            if (gameOver || isAnimating || isRotating) {
+                return;
+            }
+
+            // Prevent multi-touch issues
+            const touch = event.changedTouches[0];
+            const rect = canvas.getBoundingClientRect();
+            const x = touch.clientX - rect.left;
+            const c = Math.floor(x / CELL_SIZE);
+
+            if (c >= 0 && c < COLS) {
+                // Find the lowest empty row in the clicked column
+                for (let r = ROWS - 1; r >= 0; r--) {
+                    if (board[r][c] === 0) {
+                        animateDrop(c, r, currentPlayer);
+                        return; // Exit after finding the spot and starting the animation
+                    }
+                }
+            }
+            event.preventDefault(); // Prevents other default touch actions
+        });
+
+        // Add event listener for the "New Game" button
+        newGameBtn.addEventListener('click', initGame);
+
+        // Add event listener for the new "Rotate" button
+        rotateBtn.addEventListener('click', handleRotate);
+
+
+        // Resize function to make the canvas responsive
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            const containerWidth = container.clientWidth;
+            const newCanvasWidth = Math.min(containerWidth, 600);
+            const newCellSize = newCanvasWidth / COLS;
+            const newCanvasHeight = newCellSize * ROWS;
+
+            canvas.width = newCanvasWidth;
+            canvas.height = newCanvasHeight;
+            
+            // Re-draw the board with the new dimensions
+            drawBoard();
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        
+        // Initial setup on page load
+        window.onload = function() {
+            initGame(); // Initialize the game state first
+            resizeCanvas(); // Then resize and draw the canvas
+        }
+    </script>
+</body>
+</html>
+
